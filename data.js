@@ -1,5 +1,6 @@
 
 
+
 // fetch the current valid time from smhi which is used to get wind data
 function getValidTime(){
     var validTime ="https://opendata-download-metfcst.smhi.se/api/category/pmp3g/version/2/validtime.json";
@@ -42,12 +43,9 @@ function parseTime(time) {
     return temp; 
 } 
 
-// To be implemented, for now it just shows the data
-function initMap(data){
-    console.log("data1", data[1])//.timeSeries.parameters.values[2]);
-    console.log("data2",data[2])//.coordinates[2]);  
-}
 
 //initalize data fetch
 getValidTime(); 
+
+
 
