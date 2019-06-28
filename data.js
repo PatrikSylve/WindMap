@@ -1,6 +1,4 @@
 
-
-
 // fetch the current valid time from smhi which is used to get wind data
 function getValidTime(){
     var validTime ="https://opendata-download-metfcst.smhi.se/api/category/pmp3g/version/2/validtime.json";
@@ -11,8 +9,7 @@ function getValidTime(){
 
 // fetch wind speed, wind direction and station coordinates from SMHI. The function calls initMap when promise is resolved.
 // parameter is JSON containing an array of valid times 
-function getAllData(time)
-{
+function getAllData(time){
     var Vtime = parseTime(time); 
     
     urlSpeed = "https://opendata-download-metfcst.smhi.se/api/category/pmp3g/version/2/geotype/multipoint/validtime/" + Vtime + "/parameter/ws/leveltype/hl/level/10/data.json?with-geo=false";
