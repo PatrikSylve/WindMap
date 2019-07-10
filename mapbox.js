@@ -1,5 +1,20 @@
 
-function initMap(img){
+var imgCoord = new Image();
+//img.src="coordRandom.png";
+imgCoord.src="coordRandom.png";
+var imgCoord2 = new Image();
+//img.src="coordRandom.png";
+imgCoord2.src="coordRandom.png";
+var imgWind = new Image();
+imgWind.src = "windRandom.png"; 
+imgCoord.onload = function () {
+  imgWind.onload = function() {
+  initMap([imgCoord,imgWind, imgCoord2])
+  }
+}
+
+
+function initMap(textures){
 
   // create bounding box covering Sweden 
   var bbox = new mapboxgl.LngLatBounds( 
@@ -22,7 +37,7 @@ function initMap(img){
   
     map.on('load', function() {
       // add custom layer from class PointLayer
-        map.addLayer(new PointLayer(img));
+        map.addLayer(new PointLayer(textures));
     });
 }
 
@@ -35,11 +50,11 @@ function convertCoordinates(long, lati) {
 
 // class for webgl point layer
 class PointLayer {
-  constructor(image) {
+  constructor(textures) {
       this.id = 'point-layer';
       this.type = 'custom';
       this.renderingMode = '2d';
-      this.image = image; 
+      this.textures = textures; 
   }
 
   onAdd(map, gl) {
@@ -50,30 +65,58 @@ class PointLayer {
       attribute float a_index;
 
       uniform sampler2D u_particles;
+      uniform sampler2D u_wind; 
+  
       uniform float u_particles_res;
       uniform mat4 u_matrix;
 
-      //varying vec2 v_particle_pos;
+      const float BASE = 255.0;
+      const float OFFSET = BASE * BASE / 2.0;
+      const float PI = 3.1415926535897932384626433832795;
+
+      varying vec4 v_color; 
+
+      float decode(vec2 channels, float scale) {
+        return (dot(channels, vec2(BASE, BASE * BASE)) - OFFSET) / scale;
+      }
+
+      vec2 project(vec2 coordinates){
+        float x = (coordinates.x+180.0)/360.0;
+        float y = (180.0 - (180.0 / PI * log(tan(PI / 4.0 + coordinates.y * PI / 360.0)))) / 360.0;
+        return vec2(x,y); 
+      }
 
       void main() {
         vec4 color = texture2D(u_particles, vec2(
-            fract(a_index / u_particles_res),
-            floor(a_index / u_particles_res) / u_particles_res));
+        fract(a_index / u_particles_res),
+        floor(a_index / u_particles_res) / u_particles_res));
+
+      // pass wind data to fragment
+      vec4 w_tex =  texture2D(u_wind, vec2(
+        fract(a_index / u_particles_res),
+        floor(a_index / u_particles_res) / u_particles_res));
+      v_color = w_tex;
+
     
-        // decode current particle position from the pixel's RGBA value
-        vec2 v_particle_pos = vec2(
-            color.r/255.0 ,
-            color.g/255.0 );
-    
-        gl_PointSize = 5.0;
-        gl_Position = u_matrix*vec4(2.0*v_particle_pos.x -1.0, 1.0 - 2.0*v_particle_pos.y, 0, 1);
+        
+      // decode coordtexture pixels
+        float decoded_x = decode(color.xy, 18.0); 
+        float decoded_y = decode(color.zw, 18.0); 
+
+      //convert coordinates to mercator range [0-1]
+        vec2 projected_pos = project(vec2(decoded_x,decoded_y));
+
+   
+
+        gl_PointSize = 2.0;
+        gl_Position = u_matrix*vec4(projected_pos, 0, 1);
     }`;
 
       const fragmentSource = `
       precision mediump float;
-
-      void main() {
-          gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
+      varying vec4 v_color;
+      void main() { 
+          gl_FragColor = v_color;//vec4(1.0, 0.0, 0.0, 1.0);
       }`;
 
       var indexCoord = []; 
@@ -98,6 +141,8 @@ class PointLayer {
       gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(indexCoord), gl.STATIC_DRAW);
 
+      this.textures = genTexture(gl, this.textures);
+
       /*
           // Create a texture.
     var texture = gl.createTexture();
@@ -118,12 +163,25 @@ class PointLayer {
       gl.generateMipmap(gl.TEXTURE_2D);
     });
     */
+   gl.useProgram(this.program);
+   var u_image0Location = gl.getUniformLocation(this.program, "u_particles");
+   var u_image1Location = gl.getUniformLocation(this.program, "u_wind");
+
+   gl.uniform1i(u_image0Location, 0);  // texture unit 0
+   gl.uniform1i(u_image1Location, 1);  // texture unit 1
+
+ 
 
   }
 
   render(gl, matrix) {
       var particleRes = 512; 
-      genTexture(gl, this.image);
+     
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, this.textures[0]);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, this.textures[1]);
+
       gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
       gl.enableVertexAttribArray(this.aPos);
       gl.vertexAttribPointer(this.aPos, 1, gl.FLOAT, false, 0, 0);
@@ -135,23 +193,32 @@ class PointLayer {
 }
 
 
-function genTexture(gl, image2){
-  var texture = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, texture);
- // var image2 = new Image();
+function genTexture(gl, image){
+  var textures = []
+  for (var i = 0; i < 3; i++) {
+    var texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
 
- // image2.src = imageSrc;
-  gl.bindTexture(gl.TEXTURE_2D, texture);
-  console.log("hj")
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA,gl.UNSIGNED_BYTE, image2);
-  gl.generateMipmap(gl.TEXTURE_2D);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+ 
+    // Upload the image into the texture.
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image[i]);
+    textures.push(texture); 
+  }
+  return textures; 
 }
 
+class Particles {
+  constructor(numParticles, gl){
+    this.numParticles =  numParticles; 
+    this.gl = gl;
+  }
 
-// initialize 
+  
 
-var img = new Image();
-img.src="coordinates512.png";
-img.onload = function () {
-  initMap(img)
 }
+ 
+
