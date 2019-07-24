@@ -1,12 +1,10 @@
 
 var imgCoord = new Image();
-//img.src="coordRandom.png";
-imgCoord.src="textures/coordRandom.png";
+imgCoord.src="textures/acoordRandom.png";
 var imgCoord2 = new Image();
-//img.src="coordRandom.png";
-imgCoord2.src="textures/coordRandom.png";
+imgCoord2.src="textures/acoordRandom.png";
 var imgWind = new Image();
-imgWind.src = "textures/windRandom.png"; 
+imgWind.src = "textures/awindRandom.png"; 
 imgCoord.onload = function () {
   imgWind.onload = function() {
   initMap([imgCoord,imgWind, imgCoord2])
@@ -43,12 +41,6 @@ function initMap(textures){
 }
 
 
-// convert coordinates to MercatorCoordinates (EPSG:3857 converted in range 0-1)
-function convertCoordinates(long, lati) {
-  return mapboxgl.MercatorCoordinate.fromLngLat({ lng: long, lat:lati });
-}
-
-
 // class for webgl point layer
 class PointLayer {
   constructor(textures) {
@@ -70,6 +62,7 @@ class PointLayer {
       uniform sampler2D u_wind;   
       uniform float u_particles_res;
       uniform mat4 u_matrix;
+      uniform float u_velocity; 
 
       const float BASE = 255.0;
       const float OFFSET = BASE * BASE / 2.0;
@@ -96,6 +89,8 @@ class PointLayer {
         return vec2(x,y); 
       }
 
+      
+
       void main() {
         vec4 color = texture2D(u_particles, vec2(
         fract(a_index / u_particles_res),
@@ -114,8 +109,6 @@ class PointLayer {
        // decode coordtexture pixels
         float decoded_x = decode(color.xy); 
         float decoded_y = decode(color.zw); 
-
-      
 
         //convert coordinates to mercator range [0-1]
         vec2 projected_pos = project(vec2(decoded_x,decoded_y));
@@ -150,13 +143,16 @@ var quadFrag =
   precision mediump float;
 
   uniform sampler2D u_particles;
+  uniform sampler2D u_wind;
+
 
   varying vec2 v_tex_pos; 
 
   const float BASE = 255.0;
   const float OFFSET = BASE * BASE / 2.0;
   const float scale = 18.0;
-  const float speed = 0.0001; 
+  const float speed = 0.01; 
+  
 
   float decode(vec2 channels) {
     return (dot(channels, vec2(BASE, BASE * BASE)) - OFFSET) / scale;
@@ -171,12 +167,16 @@ var quadFrag =
 
   void main() {
     vec4 color = texture2D(u_particles, v_tex_pos);
+    vec4 wind = texture2D(u_wind, v_tex_pos);
+    
+    
 
-    float decoded_x = decode(color.xy) + 1.0*speed; 
-    float decoded_y = decode(color.zw) + 1.0*speed; 
+    float decoded_x = decode(color.xy) + decode(wind.xy)*speed; 
+    float decoded_y = decode(color.zw) + decode(wind.zw)*speed; 
 
     vec2 encoded_x = encode(decoded_x); 
     vec2 encoded_y = encode(decoded_y); 
+    //gl_FragColor = vec4(floor(encoded_x.x), floor(encoded_x.y), floor(encoded_y.x), floor(encoded_y.y));
     gl_FragColor = vec4(encoded_x, encoded_y);
   }
 `;
@@ -191,94 +191,134 @@ var quadFrag =
       this.quadProgram = initShaders(gl, quadVert, quadFrag); 
       this.aPos = gl.getAttribLocation(this.program, "a_index");
 
+      this.atemp = gl.getAttribLocation(this.program, "a_test");
+
+      this.a_pos = gl.getAttribLocation(this.program, "a_pos");
+
+
       this.buffer = createBuffer(gl, new Float32Array(indexCoord));
       this.quadBuffer = createBuffer(gl, new Float32Array([0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1])); 
 
+      
       this.textures = genTexture(gl, this.textures);
-      this.stateTexture = this.textures[2];
-      this.tempT = createStateTexture(gl, 512,512); 
-
+      this.stateTexture =  this.textures[2];
+     // this.tempT = createStateTexture(gl, 512,512); 
       // Create and bind the framebuffer
       this.fb = gl.createFramebuffer();
+      this.temp = 0; 
+
+      this.setParticles(gl, 512);
+
+
+      
      
   }
 
   render(gl, matrix) {
-    setTimeout(() => {
-      this.renderScreen(gl, matrix);
-    }, 1000);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.textures[0]);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.textures[1]);
 
+    this.renderScreen(gl, matrix);
+    this.updateTexture(gl, matrix);
   }
 
   renderScreen(gl, matrix){
+    gl.disable(gl.DEPTH_TEST);
+    gl.disable(gl.STENCIL_TEST);
       // render to screen
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
       gl.useProgram(this.program);
       var u_image0Location = gl.getUniformLocation(this.program, "u_particles");
       var u_image1Location = gl.getUniformLocation(this.program, "u_wind");
 
-      gl.uniform1i(u_image0Location, 1);  
-      gl.uniform1i(u_image1Location, 2);
+      gl.uniform1i(u_image0Location, 0);  
+      gl.uniform1i(u_image1Location, 1);
 
-      gl.activeTexture(gl.TEXTURE1);
-      gl.bindTexture(gl.TEXTURE_2D, this.textures[0]);
-      gl.activeTexture(gl.TEXTURE2);
-      gl.bindTexture(gl.TEXTURE_2D, this.textures[1]);
+      
 
       gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
       gl.enableVertexAttribArray(this.aPos);
       gl.vertexAttribPointer(this.aPos, 1, gl.FLOAT, false, 0, 0);
       gl.useProgram(this.program);
       gl.uniform1f(gl.getUniformLocation(this.program, "u_particles_res"), this.particleRes);
-      gl.uniform1f(gl.getUniformLocation(this.program, "u_velocity"), this.velocity);
+      if (this.temp == 0) {
+      gl.uniform1f(gl.getUniformLocation(this.program, "u_velocity"), 0.0);
+      } else {
+        gl.uniform1f(gl.getUniformLocation(this.program, "u_velocity"), 1.0);
+      }
 
       gl.uniformMatrix4fv(gl.getUniformLocation(this.program, "u_matrix"), false, matrix);
       gl.drawArrays(gl.POINTS, 0, 512*512); // nbr of points
-      setTimeout(() => {
-        this.updateTexture(gl, matrix);
-      }, 1000);
+      this.temp = 1; 
+      gl.disable(gl.BLEND);      
   }
 
   updateTexture(gl, matrix) {
-   //gl.bindFramebuffer(gl.FRAMEBUFFER, this.fb);
-  //gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.stateTexture, 0);
+    
     bindFramebuffer(gl, this.fb, this.stateTexture); 
-    gl.viewport(0, 0, 512, 512);
+    gl.viewport(0, 0, 512,512 );
 
     gl.useProgram(this.quadProgram); 
     var u_image0Location = gl.getUniformLocation(this.quadProgram, "u_particles");
-    //var u_image1Location = gl.getUniformLocation(this.program, "u_wind");
-
+    var u_image1Location = gl.getUniformLocation(this.quadProgram, "u_wind");
+    
     gl.uniform1i(u_image0Location, 0);  
-    //gl.uniform1i(u_image1Location, 1);
+    gl.uniform1i(u_image1Location, 1);
 
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this.textures[0]);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.quadBuffer);
+    this.quadPosLocation = gl.getAttribLocation(this.quadProgram, "a_pos");
+    gl.enableVertexAttribArray(this.quadPosLocation);
+    gl.vertexAttribPointer(this.quadPosLocation, 2, gl.FLOAT, false, 0, 0);
 
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
-    // bind texture to temp text to avoid conflict while drawing
-    /*
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.fb);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.tempT, 0);
-*/
-/*
-    var tmp = this.textures[0]; 
-    this.textures[0] = this.stateTexture; 
-    this.stateTexture = tmp;
-*/
-var tmp = this.stateTexture; 
+    // swap textures
+    var tmp = this.stateTexture; 
     this.stateTexture = this.textures[0]; 
     this.textures[0] = tmp;
+  }
 
-    setTimeout(() => {
-      this.renderScreen(gl, matrix);
-    }, 1000);
+  setParticles(gl, nbr) {
 
+    // we create a square texture where each pixel will hold a particle position encoded as RGBA
+    const particleRes = this.particleStateResolution = 512;
+    this.particleNbr = nbr* nbr //particleRes * particleRes;
+  
+    const particleState = new Uint8Array(this.particleNbr * 4);
+    for (let i = 0; i < particleState.length; i++) {
+        particleState[i] = Math.floor(Math.random() * 256); // randomize the initial particle positions
+    }
+    // textures to hold the particle state for the current and the next frame
+    this.textures[0] = createTexture(gl, gl.NEAREST, particleState, particleRes, particleRes);
+    this.stateTexture = createTexture(gl, gl.NEAREST, particleState, particleRes, particleRes);
+  
+    const particleIndices = new Float32Array(512*512);
+    for (let i = 0; i < 512*512; i++) particleIndices[i] = i;
+    this.buffer = createBuffer(gl, particleIndices);
   }
 }
 
+
+function createTexture(gl, filter, data, width, height) {
+  const texture = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+  if (data instanceof Uint8Array) {
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+  } else {
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, data);
+  }
+  gl.bindTexture(gl.TEXTURE_2D, null);
+  return texture;
+}
 
 
 function genTexture(gl, image){
@@ -293,6 +333,7 @@ function genTexture(gl, image){
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
  
     // Upload the image into the texture.
+    
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image[i]);
     textures.push(texture); 
   }
@@ -328,37 +369,4 @@ function createBuffer(gl, data){
   gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
   return buffer; 
 }
-
-function createStateTexture(gl, width, height){
-  const targetTextureWidth = width;
-  const targetTextureHeight = height;
-  var targetTexture = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, targetTexture);
-   
-  
-  
-    const data = new Uint8Array(512 * 512 * 4);
-    //gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, data);
-
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-  
-  gl.bindTexture(gl.TEXTURE_2D, null);
-
-  return targetTexture; 
-}
-
-/*
-class Particles {
-  constructor(numParticles, gl){
-    this.numParticles =  numParticles; 
-    this.gl = gl;
-  }
-}
-
-*/
-
 
