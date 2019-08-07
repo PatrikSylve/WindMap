@@ -4,12 +4,14 @@ imgCoord.src="textures/acoordRandom.png";
 var imgCoord2 = new Image();
 imgCoord2.src="textures/acoordRandom.png";
 var imgWind = new Image();
-imgWind.src = "textures/windtest.png"; 
+imgWind.src = "textures/windtexture255196.png"; 
 imgCoord.onload = function () {
   imgWind.onload = function() {
   initMap([imgCoord,imgWind, imgCoord2])
   }
 }
+
+var mapObj; 
 
 function initMap(textures){
 
@@ -58,16 +60,35 @@ function initMap(textures){
       // add custom layer from class PointLayer
       let pl = new PointLayer(textures, map);
         map.addLayer(pl);
+      mapObj = pl; 
          
     });
-   
-    
+
 
 
 }
 
 
+function setParticle() {
+  mapObj.particleNbr =   document.getElementById("particlenbr").value; 
+  mapObj.updateParticleNbr = 1; 
+  document.getElementById("number").innerHTML = mapObj.particleNbr*mapObj.particleNbr;
 
+}
+
+function setParticleSpeed() {
+  let speed = document.getElementById("particlespeed").value; 
+  speed = speed * 0.000001;
+  mapObj.paricleSpeed = speed; 
+}
+
+function setParticleSize() {
+  mapObj.particleSize = document.getElementById("particlesize").value; 
+}
+
+function setDropFreq() {
+  mapObj.dropFreq = document.getElementById("dropfreq").value*0.001; 
+}
 
 
 // class for webgl point layer
@@ -79,6 +100,12 @@ class PointLayer {
       this.textures = textures;  
       this.particleRes = 512;
       this.map = map; 
+      this.particleNbr = 512*512; 
+      this.paricleSpeed = 0.0001; 
+      this.particleSize = 2.0;
+      this.updateParticleNbr = 0; 
+      this.dropFreq = 0.001; 
+ 
   }
 
   onAdd(map,gl) {
@@ -93,6 +120,7 @@ class PointLayer {
       uniform float u_particles_res;
       uniform float u_velocity; 
       uniform mat4 u_matrix;
+      uniform float u_particle_size; 
 
 
       const float BASE = 255.0;
@@ -120,6 +148,7 @@ class PointLayer {
         return vec2(x,y); 
       }
 
+      // Transform to coordinate to sweden
       vec2 toSweden(vec2 coord) {
         //(max'-min')/(max-min)*(value-max)+max'
         //float minx = 0.6527777777777778;
@@ -151,9 +180,7 @@ class PointLayer {
         floor(a_index / u_particles_res) / u_particles_res));
       v_color = w_tex;
 
-      // get velocity 
-      vec2 velocity = vec2(v_color.xy/255.0);
-    
+      
         
        // decode coordtexture pixels
         float decoded_x = decode(color.xy); 
@@ -163,12 +190,10 @@ class PointLayer {
         vec2 projected_pos = project(vec2(decoded_x,decoded_y));
         
 
-        gl_PointSize = 2.0;
-       // gl_Position = vec4(particle_pos, 0, 1);
+        gl_PointSize = u_particle_size;
 
        vec2 finalPos = toSweden(vec2(particle_pos.x, particle_pos.y));
 
-       // gl_Position = u_matrix*vec4(2.0 * particle_pos.x - 1.0, 1.0 - 2.0 * particle_pos.y, 0, 1);
        gl_Position = u_matrix*vec4(finalPos.x,finalPos.y, 0.0,1.0); 
       }`;
 
@@ -178,7 +203,46 @@ class PointLayer {
     varying vec4 v_color;
 
     void main() { 
-      gl_FragColor = v_color;
+      // l1
+      vec4 l1 = vec4(0.0, 0.0, 0.7, 1.0); 
+      //l2
+      vec4 l2 = vec4(0.050, 0.145, 0.949, 1.0); 
+
+      //l3
+      vec4 l3 = vec4(0.050, 0.145, 0.949, 1.0); 
+
+      //l4
+      vec4 l4 = vec4(0.243, 0.949, 0.050, 1.0); 
+
+      //l5
+      vec4 l5 = vec4(0.949, 0.286, 0.050,1.0); 
+
+      //l6 
+      vec4 l6 = vec4(0.949, 0.050, 0.050, 1.0); 
+      vec4 color = l1; 
+     
+      if ((v_color.x+v_color.y) > 0.6) {
+        color = l2; 
+     }
+
+      if ((v_color.x+v_color.y) > 0.7) {
+        color = l3; 
+     }
+      if ((v_color.x+v_color.y) > 0.8) {
+        color = l4; 
+     }
+
+      if ((v_color.x+v_color.y) > 1.0) {
+        color = l5; 
+     }
+
+      if ((v_color.x+v_color.y) > 1.3) {
+         color = l6; 
+      }
+    
+
+
+      gl_FragColor = color; //vec4(1.0,0.0,0.0,1.0);//v_color;
     }`;
 
     var quadVert = `
@@ -201,8 +265,11 @@ var quadFrag =
   uniform sampler2D u_wind;
 
   uniform vec2 u_wind_res;
-uniform vec2 u_wind_min;
-uniform vec2 u_wind_max;
+  uniform vec2 u_wind_min;
+  uniform vec2 u_wind_max;
+  uniform vec2 u_random; 
+  uniform float u_speed; 
+  uniform float u_drop_frequency; 
 
 
   varying vec2 v_tex_pos; 
@@ -217,8 +284,14 @@ uniform vec2 u_wind_max;
 
   vec2 lookup_wind(const vec2 uv) {
    
-    // return texture2D(u_wind, uv).rg; // lower-res hardware filtering
+    //return texture2D(u_wind, uv).rg; // lower-res hardware filtering
     vec2 px = 1.0 / u_wind_res;
+
+    //interpolate wind speeds
+    //vec2 pix = vec2(1.0, 1.0) / u_wind_res;
+    //vec2 left_pix = texture2D(u_wind, uv - pix).xy;
+    //vec2 right_pix = texture2D(u_wind, uv + pix).xy;
+
     vec2 vc = (floor(uv * u_wind_res)) * px;
     vec2 f = fract(uv * u_wind_res);
     vec2 tl = texture2D(u_wind, vc).rg;
@@ -226,7 +299,9 @@ uniform vec2 u_wind_max;
     vec2 bl = texture2D(u_wind, vc + vec2(0, px.y)).rg;
     vec2 br = texture2D(u_wind, vc + px).rg;
     return mix(mix(tl, tr, f.x), mix(bl, br, f.x), f.y);
-}
+
+    //return mix(left_pix, right_pix, 0.5);
+} 
   
 
   float decode(vec2 channels) {
@@ -240,6 +315,19 @@ uniform vec2 u_wind_max;
     return vec2(x, y) / BASE;
   }
 
+  float rand(vec2 co){
+    return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
+  }
+
+  vec2 newPos() {
+    float minx = 0.477777777777778;
+    float maxy= 0.33;
+    float maxx = 0.6072222222222222;
+    float miny = 0.2205937745177285;
+    return vec2((maxx-minx) * (rand(u_random)-1.0)+maxx, (maxy-miny)*(rand(u_random)-1.0)+maxy);
+  }
+
+
   void main() {
     vec4 color = texture2D(u_particles, v_tex_pos);
     vec4 wind = texture2D(u_wind, v_tex_pos);
@@ -252,7 +340,7 @@ uniform vec2 u_wind_max;
       float speed_t = length(velocity) / length(u_wind_max);
   
       float distortion = cos(radians(pos.y * 180.0 - 90.0));
-      vec2 offset = vec2(velocity.x ,-velocity.y) * 0.0001;
+      vec2 offset = vec2(velocity.x ,-velocity.y) * u_speed;
       pos = fract(1.0 + pos + offset);
      
     //pos = fract(1.0 + pos + vec2(decode(wind.xy), decode(wind.zw))*0.0000000001);
@@ -261,6 +349,18 @@ uniform vec2 u_wind_max;
 
     vec2 encoded_x = encode(decoded_x); 
     vec2 encoded_y = encode(decoded_y); 
+
+    vec2 seed = (pos + v_tex_pos) * u_random;
+
+    // drop rate is a chance a particle will restart at random position, to avoid degeneration
+    float drop_rate = u_drop_frequency + speed_t * 0.1;
+    float drop = step(1.0 - drop_rate, rand(seed));
+
+    vec2 random_pos = vec2(
+        rand(seed + 1.3),
+        rand(seed + 2.1));
+    pos = mix(pos, random_pos, drop);
+
     //gl_FragColor = vec4(floor(encoded_x.x), floor(encoded_x.y), floor(encoded_y.x), floor(encoded_y.y));
     //gl_FragColor = vec4(encoded_x, encoded_y);
     gl_FragColor = vec4(
@@ -269,11 +369,7 @@ uniform vec2 u_wind_max;
   }
 `;
 
-      var indexCoord = []; 
-      for (var i = 0; i < 512*512; i++){
-        indexCoord[i] = i; 
-      }
-
+  
       // init shaders 
       this.program = initShaders(gl, vertexSource, fragmentSource); 
       this.quadProgram = initShaders(gl, quadVert, quadFrag); 
@@ -283,23 +379,16 @@ uniform vec2 u_wind_max;
 
       this.a_pos = gl.getAttribLocation(this.program, "a_pos");
 
-
-      this.buffer = createBuffer(gl, new Float32Array(indexCoord));
       this.quadBuffer = createBuffer(gl, new Float32Array([0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1])); 
 
-      
       this.textures = genTexture(gl, this.textures);
       this.stateTexture =  this.textures[2];
-     // this.tempT = createStateTexture(gl, 512,512); 
+
       // Create and bind the framebuffer
       this.fb = gl.createFramebuffer();
       this.temp = 0; 
-
+      // generate particles 
       this.setParticles(gl, 512);
-
-      //this.render(gl) 
-
-     
     
       
      
@@ -322,9 +411,11 @@ uniform vec2 u_wind_max;
       gl.useProgram(this.program);
       var u_image0Location = gl.getUniformLocation(this.program, "u_particles");
       var u_image1Location = gl.getUniformLocation(this.program, "u_wind");
+      var u_particle_size = gl.getUniformLocation(this.program, "u_particle_size");
 
       gl.uniform1i(u_image0Location, 0);  
       gl.uniform1i(u_image1Location, 1);
+      gl.uniform1f(u_particle_size, this.particleSize);
 
       
 
@@ -335,9 +426,10 @@ uniform vec2 u_wind_max;
       gl.uniform1f(gl.getUniformLocation(this.program, "u_particles_res"), this.particleRes);
   
       gl.uniformMatrix4fv(gl.getUniformLocation(this.program, "u_matrix"), false, matrix);
-      gl.drawArrays(gl.POINTS, 0, 512*512); // nbr of points
+      gl.drawArrays(gl.POINTS, 0, this.particleNbr); // nbr of points
       this.temp = 1; 
-      gl.disable(gl.BLEND);      
+      gl.disable(gl.BLEND);    
+      this.gl = gl;   
   }
 
   updateTexture(gl, matrix) {
@@ -352,6 +444,11 @@ uniform vec2 u_wind_max;
     var u_wind_res = gl.getUniformLocation(this.quadProgram, "u_wind_res");
     var u_wind_min = gl.getUniformLocation(this.quadProgram, "u_wind_min");
     var u_wind_max = gl.getUniformLocation(this.quadProgram, "u_wind_max");
+    var u_random = gl.getUniformLocation(this.quadProgram, "u_random");
+    var u_speed = gl.getUniformLocation(this.quadProgram, "u_speed");
+    var u_drop_frequency = gl.getUniformLocation(this.quadProgram, "u_drop_frequency");
+
+
 
 /*
     this.xmin = -12.99796994348459;
@@ -368,9 +465,14 @@ uniform vec2 u_wind_max;
     gl.uniform1i(u_image0Location, 0);  
     gl.uniform1i(u_image1Location, 1);
 
-    gl.uniform2f(u_wind_res, 360,180);
+    gl.uniform2f(u_wind_res, 180,279);
     gl.uniform2f(u_wind_min, this.xmin, this.ymin);
     gl.uniform2f(u_wind_max, this.xmax, this.ymax);
+    gl.uniform2f(u_random, Math.random(),Math.random());
+    gl.uniform1f(u_speed, this.paricleSpeed);
+    gl.uniform1f(u_drop_frequency, this.dropFreq);
+
+
 
     gl.bindBuffer(gl.ARRAY_BUFFER, this.quadBuffer);
     this.quadPosLocation = gl.getAttribLocation(this.quadProgram, "a_pos");
@@ -384,11 +486,18 @@ uniform vec2 u_wind_max;
     var tmp = this.stateTexture; 
     this.stateTexture = this.textures[0]; 
     this.textures[0] = tmp;
+    this.gl = gl; 
    
   }
 
    render(gl, matrix) {
     console.log("Hj");
+
+    if (this.updateParticleNbr == 1) {
+      this.setParticles(gl, this.particleNbr); 
+      this.updateParticleNbr = 0; 
+    }
+    
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.textures[0]);
     gl.activeTexture(gl.TEXTURE1);
@@ -400,7 +509,7 @@ uniform vec2 u_wind_max;
     this.map.triggerRepaint();
     
     
-  
+  this.gl = gl; 
   }
  
 
@@ -408,7 +517,7 @@ uniform vec2 u_wind_max;
   setParticles(gl, nbr) {
 
     // we create a square texture where each pixel will hold a particle position encoded as RGBA
-    const particleRes = this.particleStateResolution = 512;
+    this.particleRes = nbr;
     this.particleNbr = nbr* nbr //particleRes * particleRes;
   
     const particleState = new Uint8Array(this.particleNbr * 4);
@@ -416,11 +525,13 @@ uniform vec2 u_wind_max;
         particleState[i] = Math.floor(Math.random() * 256); // randomize the initial particle positions
     }
     // textures to hold the particle state for the current and the next frame
-    this.textures[0] = createTexture(gl, gl.NEAREST, particleState, particleRes, particleRes);
-    this.stateTexture = createTexture(gl, gl.NEAREST, particleState, particleRes, particleRes);
+    this.textures[0] = createTexture(gl, gl.NEAREST, particleState, this.particleRes, this.particleRes);
+    this.stateTexture = createTexture(gl, gl.NEAREST, particleState, this.particleRes, this.particleRes);
   
-    const particleIndices = new Float32Array(512*512);
-    for (let i = 0; i < 512*512; i++) particleIndices[i] = i;
+    const particleIndices = new Float32Array(this.particleNbr);
+    for (let i = 0; i < this.particleNbr; i++) {
+      particleIndices[i] = i;
+    }
     this.buffer = createBuffer(gl, particleIndices);
   }
 }
