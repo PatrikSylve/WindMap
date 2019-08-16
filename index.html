@@ -8,16 +8,53 @@
     <link href='https://api.tiles.mapbox.com/mapbox-gl-js/v1.0.0/mapbox-gl.css' rel='stylesheet' />
     <style>
         body { margin:0; padding:0; }
-        #map { position:absolute; top:0; bottom:0; width: 100% }
+        #map { position:absolute; top:0; bottom:0; width: 100%; }
+        #gui {position:absolute; top:0; bottom:0; width: 15rem; height: 30rem;  background-color: rgba(38, 30, 48, 0.548);}
+        .slider {
+            -webkit-appearance: none;
+            width: 80%;
+            height: 15px;
+            border-radius: 5px;  
+            background: #d3d3d3;
+            outline: none;
+            opacity: 0.7;
+            -webkit-transition: .2s;
+            transition: opacity .2s;
+            margin-top: 5px; 
+        }
+        #gui-container {
+            margin-left: 10px; 
+        }
+        p {
+            color: gray;
+            font-family: Arial, Helvetica, sans-serif;
+        }
+        
+        
+
     </style>
 </head>
 <body>
 
     <div id='map'></div>
+    <div id="gui">
+        <div id="gui-container">
+            <p> Particle number </p> <p id="number"></p>
+            <input onchange="setParticle()" id="particlenbr" type="range" min="10" max="1000" value="500" class="slider">
+            <br>
+            <p> Particle Speed</p>
+            <input onchange="setParticleSpeed()" id="particlespeed" type="range" min="0.01" max="2000" value="50" class="slider">
+            <p> Particle Size</p>
+            <input onchange="setParticleSize()" id="particlesize" type="range" min="1.0" max="4.0" value="2" class="slider">
+            <p> Particle Update Frequency</p>
+            <input onchange="setDropFreq()" id="dropfreq" type="range" min="1" max="50" value="5" class="slider">
+
+    <output></output>
+        </div>
+    </div>
 
 
 
- 
     <script src="mapbox.js"></script>
 </body>
 </html>
