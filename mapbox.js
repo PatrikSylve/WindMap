@@ -32,7 +32,7 @@ var windlayer = null;
 
  function setParticleSpeed() {
     let speed = document.getElementById("particlespeed").value; 
-    speed = speed * 0.000001;
+    speed = speed * 0.0000001;
     windlayer.paricleSpeed = speed; 
 }
 
@@ -45,9 +45,9 @@ function setParticleSize() {
 }
 
 function setParticle() {
-    windlayer.particleNbr =   document.getElementById("particlenbr").value; 
+    windlayer.particleRes =   document.getElementById("particlenbr").value; 
     windlayer.updateParticleNbr = 1; 
-    document.getElementById("number").innerHTML = windlayer.particleNbr*windlayer.particleNbr;
+    document.getElementById("number").innerHTML = windlayer.particleRes*windlayer.particleRes;
 }
 
 
@@ -348,7 +348,13 @@ class PointLayer {
        
     }
   
-    render(gl, matrix) {    
+    render(gl, matrix) {   
+      // if user changes particle nbr 
+      if (this.updateParticleNbr == 1) {
+        this.setParticles(gl, this.particleRes);
+        this.updateParticleNbr = 0; 
+      }
+
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, this.textures[0]);
         gl.activeTexture(gl.TEXTURE1);
@@ -358,6 +364,7 @@ class PointLayer {
         this.updateTexture(gl, matrix);
       
         this.map.triggerRepaint();
+        this.gl = gl; 
     }
   
     renderScreen(gl,matrix){
@@ -389,7 +396,8 @@ class PointLayer {
     
         gl.uniformMatrix4fv(gl.getUniformLocation(this.program, "u_matrix"), false, matrix);
         gl.drawArrays(gl.POINTS, 0, this.particleNbr); // nbr of points
-        gl.disable(gl.BLEND);    
+        gl.disable(gl.BLEND);   
+         
     }
   
     updateTexture(gl, matrix) {
@@ -433,14 +441,14 @@ class PointLayer {
         // swap textures
         var tmp = this.stateTexture; 
         this.stateTexture = this.textures[0]; 
-        this.textures[0] = tmp;     
+        this.textures[0] = tmp; 
+        this.gl = gl;     
     }
     
     setParticles(gl, nbr) {
         this.particleRes = nbr;
         this.particleNbr = nbr* nbr //particleRes * particleRes;
         const particleState = new Uint8Array(this.particleNbr * 4);
-        
         for (let i = 0; i < particleState.length; i++) {
             particleState[i] = Math.floor(Math.random() * 256); // randomize the initial particle positions
         }
@@ -455,6 +463,7 @@ class PointLayer {
         this.buffer = gl.createBuffer(); 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer); 
         gl.bufferData(gl.ARRAY_BUFFER, particleIndices, gl.STATIC_DRAW); 
+        this.gl = gl; 
     }
 }
   
