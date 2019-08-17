@@ -66,7 +66,7 @@ class PointLayer {
         this.map = map; 
         this.particleNbr = this.particleRes*this.particleRes; 
         this.paricleSpeed = 0.0001; 
-        this.particleSize = 2.0;
+        this.particleSize = 1.0;
         this.updateParticleNbr = 0; 
         this.dropFreq = 0.001; 
         // temp wind max and min
@@ -327,21 +327,20 @@ class PointLayer {
   `;
   
     
-        // init shaders 
+        // init shaderprograms
         this.program = initShaders(gl, drawVert, drawFrag); 
         this.updateProgram = initShaders(gl, updateVert, updateFrag); 
 
-        this.aPos = gl.getAttribLocation(this.program, "a_index");
-        this.a_pos = gl.getAttribLocation(this.program, "a_pos");
-  
+        // create buffer to hold sqare primitive to draw updated texture
         this.updateBuffer = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, this.updateBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1]), gl.STATIC_DRAW);
-    
+
+        // create data textures
         this.textures = genTexture(gl, this.textures);
         this.stateTexture =  this.textures[2];
   
-        // Create and bind the framebuffer
+        // Create framebuffer
         this.fb = gl.createFramebuffer();
         // generate particles 
         this.setParticles(gl, this.particleRes);
@@ -350,7 +349,7 @@ class PointLayer {
   
     render(gl, matrix) {   
       // if user changes particle nbr 
-      if (this.updateParticleNbr == 1) {
+      if (this.updateParticleNbr) {
         this.setParticles(gl, this.particleRes);
         this.updateParticleNbr = 0; 
       }
@@ -359,8 +358,11 @@ class PointLayer {
         gl.bindTexture(gl.TEXTURE_2D, this.textures[0]);
         gl.activeTexture(gl.TEXTURE1);
         gl.bindTexture(gl.TEXTURE_2D, this.textures[1]);
-    
+
+        // render to screen
         this.renderScreen(gl,matrix);
+
+        // render to texture 
         this.updateTexture(gl, matrix);
       
         this.map.triggerRepaint();
@@ -383,6 +385,8 @@ class PointLayer {
         var u_wind_max = gl.getUniformLocation(this.program, "u_wind_max");
         var u_particles_res = gl.getUniformLocation(this.program, "u_particles_res");
   
+        var a_index = gl.getAttribLocation(this.program, "a_index");
+
         gl.uniform1i(u_image0Location, 0);  
         gl.uniform1i(u_image1Location, 1);
         gl.uniform1f(u_particle_size, this.particleSize);
@@ -390,8 +394,8 @@ class PointLayer {
         gl.uniform2f(u_wind_max, this.xmax, this.ymax);
   
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
-        gl.enableVertexAttribArray(this.aPos);
-        gl.vertexAttribPointer(this.aPos, 1, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(a_index);
+        gl.vertexAttribPointer(a_index, 1, gl.FLOAT, false, 0, 0);
         gl.uniform1f(u_particles_res, this.particleRes);
     
         gl.uniformMatrix4fv(gl.getUniformLocation(this.program, "u_matrix"), false, matrix);
@@ -422,7 +426,8 @@ class PointLayer {
         gl.uniform1i(u_image1Location, 1);
     
         //wind texture res
-        gl.uniform2f(u_wind_res, 180,271);
+        //gl.uniform2f(u_wind_res, 180,271);
+        gl.uniform2f(u_wind_res, 612,752);
 
         gl.uniform2f(u_wind_min, this.xmin, this.ymin);
         gl.uniform2f(u_wind_max, this.xmax, this.ymax);
@@ -449,6 +454,7 @@ class PointLayer {
         this.particleRes = nbr;
         this.particleNbr = nbr* nbr //particleRes * particleRes;
         const particleState = new Uint8Array(this.particleNbr * 4);
+
         for (let i = 0; i < particleState.length; i++) {
             particleState[i] = Math.floor(Math.random() * 256); // randomize the initial particle positions
         }
