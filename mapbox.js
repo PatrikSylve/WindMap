@@ -37,7 +37,7 @@ var windlayer = null;
 }
 
 function setDropFreq() {
-    windlayer.dropFreq = document.getElementById("dropfreq").value*0.001; 
+    windlayer.dropFreq = document.getElementById("dropfreq").value*0.0001; 
 }
 
 function setParticleSize() {
